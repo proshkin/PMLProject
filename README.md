@@ -1,1 +1,1 @@
-# PMLProject
+# Practical Machine Learning: Prediction Assignment Writeup
