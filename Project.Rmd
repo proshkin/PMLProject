@@ -1,0 +1,115 @@
+---
+title: "Activity quality prediction"
+author: "Igor Proshkin"
+date: "February 9, 2016"
+output: html_document
+---
+
+####Introduction
+
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, our goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants and predict how well they are doing their exercises.
+The participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: [groupware.les.inf.puc-rio.br/har ](http://groupware.les.inf.puc-rio.br/har)
+
+####Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+
+####Data load
+
+```{r message=FALSE}
+library(RCurl)
+
+train_url <- getURL('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv')
+test_url <- getURL('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv')
+
+training_raw_data <- read.csv(text = train_url)
+testing_raw_data <- read.csv(text = test_url)
+```
+
+#### Exploratory Analysis and data cleanup
+
+Just looking at the training data we can see that there are two distinct type of records: one has "new_window" attribute set to "no" and another is set to "yes".
+The testing dataset has only records with "new_window" set to "no". That means that we can get rid of all records with "new_window" set to "yes" from training data.
+
+```{r}
+training_data1 = subset(training_raw_data, new_window != "yes")
+```
+
+Next we can remove ll columns that have no variance (single value). Also we can remove columns that are test metadata (like user name and test time), not the actual measurements:
+
+```{r}
+data_var <- lapply(training_data1, function(x) !all(duplicated(x)[-1L]))
+dv <- (data_var == TRUE) &
+    !(names(data_var) %in% c('X', 'user_name', 'raw_timestamp_part_1', 'raw_timestamp_part_2', 'cvtd_timestamp', 'num_window'))
+dv1 <- dv
+names(dv1)[length(dv1)] <- "classe"
+training_data2 <- training_data1[dv1]
+testing_data2 <- testing_raw_data[dv1]
+```
+
+#### Split data into training and testing
+
+```{r message=FALSE}
+library(caret)
+inTrain <- createDataPartition(y=training_data2$classe,
+                               p=0.7, list=FALSE)
+training <- training_data2[inTrain,]
+testing <- training_data2[-inTrain,]
+```
+
+#### Tarining model
+
+The model training can take a long time on the big dataset. To improve the performance we will run training process in parallel.
+
+```{r message=FALSE, results="hide"}
+library(doSNOW)
+getDoParWorkers()
+getDoParName()
+registerDoSNOW(makeCluster(parallel:::detectCores(), type = "SOCK")) 
+getDoParWorkers()
+getDoParName()
+library(foreach)
+```
+
+For training we will use boosted tree model.
+
+```{r message=FALSE}
+fit <- train(classe ~.,method="gbm",data=training)
+```
+
+####Validate model on testing portion of training data
+
+```{r}
+res <- predict(fit, testing)
+confusionMatrix(testing$classe ,res)
+
+```
+
+The accuracy of the model is very high. That confirm our choice of features and the model training algorithm.
+
+#### Predicting test data 
+
+To make prediction on the test data we have to do the same data cleansing that we did with training data:
+
+```{r}
+testing_data2 <- testing_raw_data[dv1]
+```
+
+And the prediction values on the test data are:
+```{r}
+predict(fit, testing_data2)
+```
+
+
+#### Conclusion
+
+Using data form accelerometers we can predict the quality of exercises with very high accuracy.
+
